@@ -153,20 +153,19 @@
         </p>
 
         <p>
-          Applications and system services use messages to record their events,
-          but by default these log messages remain on local systems and are
-          deleted. Without intervening then, developers and administrators lose
-          valuable insight into the history, performance and security of their
-          systems.
+          Applications and system services record their events to local log files,
+          but by default these log messages remain on local systems and are eventually either archived away never to be seen or permanently deleted. Without intervening then, developers and administrators lose valuable insight into the history, performance and security of their systems and applications.
         </p>
 
         <p>
-          Crato employs centralized logging to address this problem. With Crato,
-          each machine sends its logs to an offsite collection server, where
-          users can gain insight into the entire system by accessing the
-          consolidated logs. Log messages are then streamed into Kafka, consumed
-          by Crato, and sent as compressed files to Amazon S3 for archiving and
-          into InfluxDB for metrics-based querying.
+          Crato allows developers to quickly and easily deploy a centralized logging infrastructure to address this problem. Using Crato,
+          each machine sends its logs to a central collection server, where
+          developers can gain insight into their entire system by analyzing the
+          consolidated logs across the entire deployed fleet of systems and applications. Besides log data consolidation and analysis (via InfluxDB), Crato also provides smart compression and archiving (via Amazon S3 and S3 Glacier). Crato makes configuring, deploying, and maintaining all these pieces easy and fast.
+        </p>
+
+        <p>
+          Before we get into Crato, let's take a step back and discuss what logs are. 
         </p>
 
         <h2 id="logging">2 Logging</h2>
@@ -174,21 +173,16 @@
         <h3>2.1 What is a Log?</h3>
 
         <p>
-          Logs are an essential tool that developers use on a daily basis and in
+          Developers rely on logs of all sorts on a daily basis and in
           the simplest case, we can think of logs as distinct events that get
           written to files<sup><a href="#footnote-1">1</a></sup
-          >. This log data is one of the key elements in determining application
-          health, as well as in analysis and debugging, and for deriving useful
-          metrics. But most often, especially on a single node system, when
-          there is an issue, developers can reach for the appropriate log file
-          and look for errors or warnings to understand what went wrong. In
-          addition to the error logs that help developers investigate issues,
-          event logs across your application's services can also give insights
-          on how the application is being used and are essential for performing
-          historical analysis to find trends, patterns and user behaviours.
+          >. Log data is often the primary way to determining application
+          health, debugging a problem, or deriving aggregate
+          metrics. It's the first place any developer looks to try to piece together what happened in an event of an error or exception. Logs are critical and every piece of software, from infrastructure to operating system services, are continuously logging events as soon as the system is up.
         </p>
 
         <p>
+          CHRIS NOTE: next sentence is a doozy.
           It is natural to think of logs as files since normally, the
           environment in which our applications run include a logging system
           that separates the concern of log message processing from the
@@ -202,19 +196,16 @@
         <h3>2.2 Logs as Files</h3>
 
         <p>
-          Most often, especially on a UNIX machine, log files can be found in
-          the <code>var/log</code> directory and apart from log files that are
-          found there, this directory can contain other sub directories
-          depending on applications that are running on your system. For
+          In most UNIX systems, log files for the most common applications and services can be found in the <code>var/log</code> directory. Within that directory, some services will create sub-directories to organize their logs. For
           example, MySQL generates its own log file and the
 
-          <code>httpd</code> sub directory contains the apache web server
+          <code>httpd</code> sub directory contains log files for the apache web server
           <code>access_log</code> and <code>error_log</code>. There are also
-          system processes that can be found in files like
+          system process logs that can be found in files like
           <code>kern.log</code> or
 
           <code>auth.log</code> that contain information logged by the kernel
-          and system authorization information respectively.
+          and system authorization information, respectively.
         </p>
 
         <div class="img-wrapper">
@@ -224,12 +215,10 @@
         <p>
           Because log messages are generated by some process and get written to
           files on our local file system, it's natural to think of logs simply
-          as files. There are command line utilities that help developers
-          interact with log files and we can use commands like
+          as files. If logs are just files, then we use commands like
 
           <code>grep</code> to match against some string or regular expression
-          to find what we're looking for. There is a static file, we can sift
-          through it and get a result.
+          in the log file. 
         </p>
 
         <div class="img-wrapper">
@@ -246,10 +235,8 @@
         </div>
 
         <p>
-          But in order to better understand the structure of application logs
-          and before exploring how log messages are generated and processed with
-          syslog let's consider another description of what a log is. We know
-          that a log is a file but it's not the full story.
+          But in order to better understand the structure of application logs, let's consider another description of what a log is. We know
+          that a log is a file but that's not the full story.
         </p>
 
         <h3>2.3 Logs as Append-Only Data Structures</h3>
@@ -264,31 +251,26 @@
         </blockquote>
 
         <p>
-          In a simple case, if we have an application that runs on a single
-          node, the life of the developeer is relatively easy. When the
-          application is contained, so is its log data - when something goes
-          wrong we know where to look and reading an error message that is
-          produced can be easily parsed by a human to find out what the issue
-          is. However, as applications continue to grow in complexity so does
+          In the simplest case, we have an application that runs on a single
+          server, and our life is relatively easy. When the
+          application is contained on one server, so is its log data - when something goes
+          wrong we know where to look and it's fairly straightforward to paint the entire picture of the application state. However, as applications continue to grow in complexity so does
           the volume of their log data - the many components, devices and
           microservices that produce log data are often distributed on multiple
           servers and even with a relatively small number of users, this can
-          quickly become a big data problem. For this reason there has been a
+          quickly become a big problem of incomplete information. For this reason there has been a
           greater need to unify log data, both by location as well as format.
-          This shift means that while developers still need to access and read
-          logs, this strategy becomes quickly unmanageable and so the need for
-          machines to read log data instead of humans has risen drastically.
+          On top of data consolidation, there's also been a growing need to synthesize the proliferation of logs and deep for business insights. This also implies a growing need for machines to process log data.
         </p>
         <p>
-          However, in order for a machine to parse and aggregate log data to
-          then be consumed by humans, a text file many not be the best format.
-          So if log files are useful for humans to read, what does a log that is
-          easier for machines to read look like? How do we store log data, if
-          not in a file?
+          In order for a machine to parse and aggregate log data to
+          then be consumed by humans, a text file may no longer be sufficient.
+          But how do we store log data, if not in a file?
         </p>
 
         <p>
-          If we take a step back and look at a log, not as a file but a data
+          CHRIS NOTE: this feels like a key set-up sentence, but I'm unsure of what it's saying.
+          If we take a step back and look at a log not as a file but a data
           structure as described by Jay Kreps in the quote above, we can see
           that logs as files are just a different form of this log concept. The
           log looks like this and has some basic properties:
@@ -299,11 +281,10 @@
         </div>
 
         <p>
-          Each entry in a log is added sequentially making this an append only
+          Each entry in a log is added sequentially making this an append-only
           data structure. We start on the left and each subsequent entry is then
           added to the right. The entries on the left are then by definition
-          older than entries on the right giving this data structure a natural
-          notion of time, even without an explicit timestamp<sup
+          older than entries on the right giving this data structure a built-in ordering<sup
             ><a href="#footnote-2">2</a></sup
           >. Since reads also proceed from left to write, in the context of
           building an application, if each entry in a log represents some event,
@@ -314,11 +295,8 @@
         <h3>2.4 Logs as Streams</h3>
 
         <p>
-          The "Twelve-factor App" is a methodology for building
-          software-as-a-service and is a set of guidelines published by Adam
-          Wiggins, one of Heroku's co-founders, that addresses the issue of
-          logging directly. It says that we should treat logs not as files but
-          as event streams and that your application shouldn’t concern itself
+          The "Twelve-factor App" is a set of best practices for building robust and maintainable web applications. One of the guidelines directly address logging, suggesting that we should treat logs not as files but
+          as event streams and that a web application shouldn’t concern itself
           with the storage of this information. Instead, these logs should be
           treated as a continuous stream that is captured and stored by a
           separate service<sup><a href="#footnote-3">3</a></sup
@@ -326,18 +304,17 @@
         </p>
 
         <p>
-          Of course it's natural to think of logs as files in your file
-          directory since it's a common way to interact with logs and because
+          Of course it's natural to think of logs as files since it's a common way to interact with logs and because
           log file generation is typically an automatic process that happens
-          behind the scenes. But log messages simply get written to files since
-          it's a convenient method of storing data; individual log messages can
+          behind the scenes. But log messages get written to files mainly because
+          it's a convenient method of storing data. Outside of the context of a file, individual log messages can
           be viewed as time ordered streams of events that
 
           <em>can</em> be written to files but that can also be processed in
           other ways. To borrow another quote from Jay Kreps, "Log is another
           word for stream and logs are at the heart of stream processing".
           Streams of data can be directed or split into multiple streams and
-          sent to different locations for further processing for example.
+          sent to different locations for further processing.
         </p>
 
         <p>
@@ -365,36 +342,23 @@
         <h3>2.5 Logs Capture Change</h3>
 
         <p>
-          Knowing a little bit about application logs and the structure of a
-          log, let's see why these properties are important and how they can
-          help in the context of building an application or running a small
-          application in production. To review, a log at its core is an append
+          To review, a log at its core is an append
           only sequence of records that has a natural notion of "time" because
-          newer records are appended to the end of the log. These properties
-          that define a log, when taken together can serve a purpose of
-          recording what happened and when and because they record a history,
-          they capture change of your application over time.
+          newer records are appended to the end of the log. Taken together, these properties mean that a log effectively captures changes over time, thereby creating a full history of the application.
         </p>
 
         <p>
           We most often think of our application's database, where we keep the
-          busines logic of our application to be the source of truth, but
-          knowing how we got to a particular state can be even more important.
-          This point is well described by the "Stream-Table Duality" concept. It
-          is often talked about by figures like Martin Kleppman, Jay Kreps and
-          Tyler Akidau and it shows that there exists a close relationship
-          between streams and tables.
+          busines logic of our application, as the source of truth. If some data on the UI doesn't look right, we consult the database to determine whether it's correct. But even a database can't tell you how the data got to that state. In some situations, knowing the historical context for how we got to a particular state can be even more important.
+          As espoused by Martin Kleppman, Jay Kreps, and others, this idea is known as the "Stream-Table Duality".
         </p>
 
         <h3>2.6 Stream-Table Duality</h3>
 
         <p>
-          Stream-table duality is another way of saying that there are distinct
+          Stream-Table duality is another way of saying that there are distinct
           but related ways to represent data. The familiar way is of course with
-          a table which represents a snapshot of current state. Developers work
-          with relational databases on a daily basis and it's the tables that
-          represent the business logic of the application that we are talking
-          about here. Let's consider a simple example below. There are two users
+          a table which represents a snapshot of current state. Let's consider a simple example below using relational data in tables. There are two users
           and they are transferring funds between one another. As changes occur
           over time, the data in a table is updated to reflect a new current
           state.
@@ -421,17 +385,15 @@
         </div>
 
         <p>
-          In this example, we can see that data in tables is mutable since the
-          new values in the table come in the form of updates of old ones. When
+          From this example, we can see that data in the table is mutable since the
+          old values are replaced by new values. When
           we isolate a table and look at it at any point in time, it's possible
           to answer questions about the current state - for example, what
 
           <em>is</em> the current balance of a customer with username big_ed.
-          However, looking only at a database record at one point in time and
-          then another is not going to paint a full picture - there are many
-          ways you could have gotten from one state to another and it is the log
-          that can describe that journey. We have to look at the database's
-          change log which is what captures those changes.
+          However, looking only at a database record at one point in time doesn't paint a full picture - there are many
+          ways you could have arrived from one state to another and it is only the log
+          that can describe that journey. The log is the database's changelog and it's there that we can find the full story of how the current data arrived at its current state.
         </p>
 
         <p>
@@ -449,13 +411,10 @@
         </div>
 
         <p>
-          This time, the data is immutable since the values are not updated; we
-          have distinct events and they're appended to the end of the log. What
+          From a a log-as-stream perspective, the data is immutable since the values are not updated; distinct and immutable events are appended to the end of the log. What
           is captured in the blue boxes are the changes between the table's
           states. This stream of changes can supplement the core business logic
-          that lives in tables and helps answer not only <em>what</em> changed
-          or in this example, what is the current balance of one of our users
-          but also
+          that lives in tables and helps answer not only <em>what</em> changed but also
 
           <em>why</em> and <em>how</em> something changed<sup
             ><a href="#footnote-4">4</a></sup
@@ -474,10 +433,7 @@
         </div>
 
         <p>
-          And a log is useful in another way. It doesn't only supplement static
-          data that lives in tables but because it captures all the changes that
-          a table underwent, it is possible to aggregate over the stream of
-          changes and actually end up with a table again.
+          And a log is useful in another way besides providing historical context for existing data. It is possible to rebuild the current state of any database from the database logs alone. In fact, it is possible to rebuild the "current state" of any point in time of the database from logs.
         </p>
 
         <div class="img-wrapper">
@@ -490,15 +446,9 @@
         </div>
 
         <p>
-          In the context of building an application, looking at relevant log
-          data from your application can not only give information about what
-          changed, but how and why something changed while aggregating over log
-          data, it is possible to arrive at a snapshot of your application's
-          state at any point in time. In this way, it's possible to think of a
-          log as the real source of truth since a log contains the building
-          blocks to recreate a table; we can aggregate streams to arrive at
-          tables, but looking only at a table we do not know how someone may
-          have interacted with our application to end up at that state.
+          In this way, it's possible to think of a
+          log as the real source of truth since we can recreate a snapshot of the database at any point in time from logs. That is, we can aggregate streams to arrive at
+          tables, but we cannot understand the historical context from only tables.
         </p>
 
         <h3>2.7 Why Does Logging Matter for Small Applications?</h3>
@@ -514,27 +464,18 @@
         </p>
         <ul>
           <li>We can see precisely see how our applications are being used</li>
-          <li>Data can be used to find trends, patterns and behaviours</li>
-          <li>With historical event data we can rebuild tables</li>
+          <li>Data can be used to find trends, patterns, and behaviors</li>
+          <li>With historical event logs we can rebuild a snapshot of our application state at any point in time</li>
         </ul>
 
         <p>
           For a small but growing application, there are many options to get
-          started with logging. Today, given so many options in terms of cloud
-          computing and storage it should be relatively easy for a small but
-          growing company to get started, however for many companies this is not
-          a primary concern as they try to focus on the development of their
-          application. Many companies start out without a logging system and
-          implement one later but they’ve lost all that log data up to that
-          point. If some time down the road they want to perform a historical
-          analysis to gain a competitive edge, it is too late. As we'll see, by
-          default, log data is deleted off local machines and even if it wasn't,
-          the log data from each component in your system is dispersed and not
-          usable for any meaningful analysis. In the next section, we will
-          discuss the various options that a small but growing application has
-          and how they can centralize and store their log data and for that
-          we'll need to exlore how logs are generated and processed in the first
-          place.
+          started with logging. Despite the myriad of options, many companies opt to deprioritize logging from the outset. Yet, the power of logs can only be realized later; by the time an application owner decides she wants to look at historical data, it's too late to get started as previous data is already lost. By
+          default, many systems delete log data; in some cases, it's archived into various machines and unsable for meaningful analysis. Most small application owners do not think about a logging strategy until significant data is lost. 
+        </p>
+
+        <p>
+          In the next section, we'll discuss how to get started with syslog, the standard log recording format on UNIX, and the various architectural deployment options that small application owners have for centralizing and storing their log data.
         </p>
 
         <h2 id="syslog">3 Syslog</h2>
